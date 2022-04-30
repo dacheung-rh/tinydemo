@@ -12,10 +12,6 @@ public class WelcomeController {
 	public @ResponseBody String helloWorld() {
 		
 		//Flux
-		
-		
-		
-		
 		return "Hello world ---------------- Davy"; //"application/json" mean this is a text not a redirect
 	}
 }
