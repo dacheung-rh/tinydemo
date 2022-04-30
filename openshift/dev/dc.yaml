@@ -1,0 +1,48 @@
+kind: DeploymentConfig
+apiVersion: apps.openshift.io/v1
+metadata:
+  name: demo
+  namespace: dev-demo
+  uid: 869264b9-3d7b-4562-889e-0c7bc97bab08
+  resourceVersion: '1045722688'
+  generation: 5
+  creationTimestamp: '2022-04-15T14:42:12Z'
+  labels:
+    git-commit-hash: 7194bd5a
+spec:
+  strategy:
+    type: Rolling
+    rollingParams:
+      updatePeriodSeconds: 1
+      intervalSeconds: 1
+      timeoutSeconds: 600
+      maxUnavailable: 25%
+      maxSurge: 25%
+    resources: {}
+    activeDeadlineSeconds: 21600
+  triggers:
+    - type: ConfigChange
+  replicas: 1
+  revisionHistoryLimit: 10
+  test: false
+  selector:
+    deployment-config.name: demo
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        deployment-config.name: demo
+    spec:
+      containers:
+        - name: default-container
+          image: >-
+            hkfvm438.three.com.hk/hthk/new-demo:20220415223123-1-7194bd5a
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      schedulerName: default-scheduler
