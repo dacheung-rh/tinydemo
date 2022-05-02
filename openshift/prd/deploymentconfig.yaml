@@ -23,8 +23,8 @@ spec:
           - default-container
         from:
           kind: ImageStreamTag
-          namespace: dev-demo
-          name: 'tinydemo:dev-20220430151622-1-be2c2da0'
+          namespace: demo
+          name: 'tinydemo:prd-20220430151622-1-be2c2da0'
     - type: ImageChange
       imageChangeParams:
         automatic: true
