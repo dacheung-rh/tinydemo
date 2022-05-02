@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/component: tinydemo
     app.kubernetes.io/instance: tinydemo
 spec:
-  host: tinydemo-dev-demo.apps.ocpuat.interconnect.systems
+  host: tinydemo-dr-demo.apps.ocpuat.interconnect.systems
   to:
     kind: Service
     name: tinydemo
