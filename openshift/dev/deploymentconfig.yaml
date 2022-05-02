@@ -25,15 +25,6 @@ spec:
           kind: ImageStreamTag
           namespace: dev-demo
           name: 'tinydemo:dev-20220430151622-1-be2c2da0'
-    - type: ImageChange
-      imageChangeParams:
-        automatic: true
-        containerNames:
-          - default-container
-        from:
-          kind: ImageStreamTag
-          namespace: dev-demo
-          name: 'tinydemo:dev'
   replicas: 1
   revisionHistoryLimit: 3
   test: false
