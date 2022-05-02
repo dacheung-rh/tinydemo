@@ -23,17 +23,8 @@ spec:
           - default-container
         from:
           kind: ImageStreamTag
-          namespace: dev-demo
-          name: 'tinydemo:dev-20220430151622-1-be2c2da0'
-    - type: ImageChange
-      imageChangeParams:
-        automatic: true
-        containerNames:
-          - default-container
-        from:
-          kind: ImageStreamTag
-          namespace: dev-demo
-          name: 'tinydemo:dev'
+          namespace: uat-demo
+          name: 'tinydemo:uat-20220430151622-1-be2c2da0'
   replicas: 1
   revisionHistoryLimit: 3
   test: false
@@ -50,7 +41,7 @@ spec:
       containers:
         - name: default-container
           image: >-
-            image-registry.openshift-image-registry.svc:5000/dev-demo/tinydemo@sha256:76988e919143516b3bbbbec6dd7849c50ba3cb5152287f047a8420e47a168a31
+            image-registry.openshift-image-registry.svc:5000/uat-demo/tinydemo@sha256:76988e919143516b3bbbbec6dd7849c50ba3cb5152287f047a8420e47a168a31
           resources: {}
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
