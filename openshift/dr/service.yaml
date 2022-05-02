@@ -2,7 +2,6 @@ kind: Service
 apiVersion: v1
 metadata:
   name: tinydemo
-  namespace: dev-demo
   labels:
     app: tinydemo
     app.kubernetes.io/component: tinydemo
