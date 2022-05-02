@@ -1,14 +1,9 @@
 kind: DeploymentConfig
 apiVersion: apps.openshift.io/v1
 metadata:
-  name: demo
-  namespace: dev-demo
-  uid: 869264b9-3d7b-4562-889e-0c7bc97bab08
-  resourceVersion: '1045722688'
-  generation: 5
-  creationTimestamp: '2022-04-15T14:42:12Z'
+  name: tinydemo
   labels:
-    git-commit-hash: 7194bd5a
+    git-commit-hash: be2c2da0
 spec:
   strategy:
     type: Rolling
@@ -21,22 +16,41 @@ spec:
     resources: {}
     activeDeadlineSeconds: 21600
   triggers:
-    - type: ConfigChange
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - default-container
+        from:
+          kind: ImageStreamTag
+          namespace: dev-demo
+          name: 'tinydemo:dev-20220430151622-1-be2c2da0'
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - default-container
+        from:
+          kind: ImageStreamTag
+          namespace: dev-demo
+          name: 'tinydemo:dev'
   replicas: 1
-  revisionHistoryLimit: 10
+  revisionHistoryLimit: 3
   test: false
   selector:
-    deployment-config.name: demo
+    app: tinydemo
+    deployment-config.name: tinydemo
   template:
     metadata:
       creationTimestamp: null
       labels:
-        deployment-config.name: demo
+        app: tinydemo
+        deployment-config.name: tinydemo
     spec:
       containers:
         - name: default-container
           image: >-
-            hkfvm438.three.com.hk/hthk/new-demo:20220415223123-1-7194bd5a
+            image-registry.openshift-image-registry.svc:5000/dev-demo/tinydemo@sha256:76988e919143516b3bbbbec6dd7849c50ba3cb5152287f047a8420e47a168a31
           resources: {}
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
