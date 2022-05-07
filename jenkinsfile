@@ -277,24 +277,24 @@ def promoteEnvironment(environment){
 	}
 
 	echo "Branch: ${env.DEPLOY_BRANCH}"
-    git branch:"${env.DEPLOY_BRANCH}", credentialsId: "${env.DEPLOY_GIT_CREDS}", url: "${env.DEPLOY_CODE_REPO}"
-    sh "git config --global user.email 'ci@ftlife.com.hk'"
+        git branch:"${env.DEPLOY_BRANCH}", credentialsId: "${env.DEPLOY_GIT_CREDS}", url: "${env.DEPLOY_CODE_REPO}"
+        sh "git config --global user.email 'ci@example'"
 
-    dir("${environment}") {
-        sh """
-        sed '/kind: ImageStreamTag/q' -i deployment-patch.yaml
-        echo '          namespace: ${env.IMAGE_NAMESPACE}' >>  deployment-patch.yaml
-        echo '          name: ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}' >>  deployment-patch.yaml
-        git commit -am 'Publish new version ${env.GIT_COMMITHASH}'
-        """
+        dir("kustomize/${environment}") {
+            sh """
+            sed '/kind: ImageStreamTag/q' -i deployment-patch.yaml
+            echo '          namespace: ${env.IMAGE_NAMESPACE}' >>  deployment-patch.yaml
+            echo '          name: ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}' >>  deployment-patch.yaml
+            git commit -am 'Publish new version ${env.GIT_COMMITHASH}'
+            """
 
-		withCredentials([gitUsernamePassword(credentialsId: "${env.DEPLOY_GIT_CREDS}", gitToolName: 'git-tool')]) {
-		    sh "git push origin main || echo 'no changes'"
-		}
-    }
+            withCredentials([gitUsernamePassword(credentialsId: "${env.DEPLOY_GIT_CREDS}", gitToolName: 'git-tool')]) {
+	        sh "git push origin ${env.DEPLOY_BRANCH} || echo 'no changes'"
+            }
+        }
 	
 	// implmentation can replace ArgoCD / GitOps
-    openshift.raw("apply -k ./${environment} ")
+        openshift.raw("apply -k ./kustomize/${environment} ")
 	def dcSelector = openshift.selector("dc","${env.APP_NAME}")
 	if ( dcSelector.exists() ) {
 		sleep(30)
