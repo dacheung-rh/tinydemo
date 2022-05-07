@@ -1,0 +1,492 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1145.v7f2433caa07f">
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.plugins.jira.JiraProjectProperty plugin="jira@3.7.1"/>
+    <io.fabric8.jenkins.openshiftsync.BuildConfigProjectProperty plugin="openshift-sync@1.0.53">
+      <uid></uid>
+      <namespace></namespace>
+      <name></name>
+      <resourceVersion></resourceVersion>
+    </io.fabric8.jenkins.openshiftsync.BuildConfigProjectProperty>
+    <com.sonyericsson.rebuild.RebuildSettings plugin="rebuild@1.33">
+      <autoRebuild>false</autoRebuild>
+      <rebuildDisabled>false</rebuildDisabled>
+    </com.sonyericsson.rebuild.RebuildSettings>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>PROJECT_NAME</name>
+          <defaultValue>demo</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>SOURCE_CODE_REPO</name>
+          <defaultValue>https://src.ftlife.com.hk/ocp-src/tinydemo-src.git</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>APP_NAME</name>
+          <defaultValue>tinydemo</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EMAIL_FAIL</name>
+          <defaultValue>dacheung@redhat.com</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>IMAGE_NAME</name>
+          <defaultValue>tinydemo</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>EMAIL_UAT_APPROVAL</name>
+          <defaultValue>dacheung@redhat.com</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.TextParameterDefinition>
+          <name>QUAY_SECRET</name>
+          <defaultValue>apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-robot-pull-secret
+data:
+  .dockerconfigjson: ewogICJhdXRocyI6IHsKICAgICJxdWF5LmFwcHMub2NwdWF0LmludGVyY29ubmVjdC5zeXN0ZW1zIjogewogICAgICAiYXV0aCI6ICJaR1Z0Ynl0eWIySnZkRHBSUlZaQ1ZsQmFObGswVERBNU5qbElVVlJCUlZCRVJGaFZNMGxNTVVrMFQxWkNOMGRRTVU1RE1sTklTRlpIVWt0VlYwVkxValUwVEZwUFJVbEZUVFF3IiwKICAgICAgImVtYWlsIjogIiIKICAgIH0KICB9Cn0=
+type: kubernetes.io/dockerconfigjson</defaultValue>
+          <trim>false</trim>
+        </hudson.model.TextParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>VERSION</name>
+          <defaultValue>1</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>BUILDER_IMAGE</name>
+          <defaultValue> java:openjdk-11-ubi8</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>SOURCE_BRANCH</name>
+          <defaultValue>main</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <com.cloudbees.plugins.credentials.CredentialsParameterDefinition plugin="credentials@1087.1089.v2f1b_9a_b_040e4">
+          <name>SOURCE_GIT_CREDS</name>
+          <defaultValue>github-ocp-src-creds</defaultValue>
+          <credentialType>com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl</credentialType>
+          <required>true</required>
+        </com.cloudbees.plugins.credentials.CredentialsParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>QUAY_REPO</name>
+          <description>-OCP project name
+-Quay Organization</description>
+          <defaultValue>quay.apps.ocpuat.interconnect.systems/demo</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>BUILDER_CONTEXT_PATH</name>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>DEPLOY_CODE_REPO</name>
+          <defaultValue>https://src.ftlife.com.hk/ocp-deploy/tinydemo-deploy.git</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>DEPLOY_BRANCH</name>
+          <defaultValue>main</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <com.cloudbees.plugins.credentials.CredentialsParameterDefinition plugin="credentials@1087.1089.v2f1b_9a_b_040e4">
+          <name>DEPLOY_GIT_CREDS</name>
+          <defaultValue>github-ocp-deploy-creds</defaultValue>
+          <credentialType>com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl</credentialType>
+          <required>true</required>
+        </com.cloudbees.plugins.credentials.CredentialsParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@2660.vb_c0412dc4e6d">
+    <script>podTemplate(label: &quot;maven&quot;, 
+            cloud: &quot;openshift&quot;, 
+            inheritFrom: &quot;maven&quot;, 
+            volumes: [configMapVolume(configMapName: &apos;jenkins-trusted-ca-bundle&apos;, mountPath: &apos;/etc/ssl/certs/ca-bundle.crt&apos;, subPath: &apos;ca-bundle.crt&apos;)],
+            containers: [
+    containerTemplate(name: &quot;jnlp&quot;, 
+                      image: &quot;image-registry.openshift-image-registry.svc:5000/openshift/jenkins-agent-maven:latest&quot;,
+                      resourceRequestMemory: &quot;512Mi&quot;,
+                      resourceLimitMemory: &quot;512Mi&quot;,
+                      envVars: [
+      envVar(key: &quot;CONTAINER_HEAP_PERCENT&quot;, value: &quot;0.25&quot;)
+    ])
+  ]) {
+
+	node(&quot;maven&quot;) { 
+
+		env.MAVEN_MIRROR_URL=&quot;https://nexus-cicd.apps.ocpuat.interconnect.systems/repository/maven-public/&quot;
+		env.NPM_MIRROR=&quot;https://nexus-cicd.apps.ocpuat.interconnect.systems/repository/nodejs/&quot;
+		env.BUILD_NAMESPACE=&quot;dev-${env.PROJECT_NAME}&quot;
+
+		stage(&apos;Source Code Download&apos;) {
+			try {
+				echo &quot;Branch: ${env.SOURCE_BRANCH}&quot;
+				git branch:&quot;${env.SOURCE_BRANCH}&quot;, credentialsId: &quot;${env.SOURCE_GIT_CREDS}&quot;, url: &quot;${env.SOURCE_CODE_REPO}&quot;
+				def commitHash = sh(returnStdout: true, script: &apos;git rev-parse HEAD&apos;).trim().take(8)
+				echo &quot;${commitHash}&quot;
+				env.GIT_COMMITHASH = commitHash
+				def now = new Date()
+				env.DATETAG = now.format(&quot;yyyyMMddHHmmss&quot;, TimeZone.getTimeZone(&apos;Asia/Hong_Kong&apos;))
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+/*
+		stage(&apos;Code Analysis - SonarQube&apos;){
+			withSonarQubeEnv(){
+				configFileProvider([configFile(fileId:&apos;maven-config-file&apos;,variable:&apos;MAVENSETTINGS&apos;)]){
+				   sh &quot;mvn -s $MAVENSETTINGS install sonar:sonar&quot;
+				}
+			}
+		}
+		
+		stage(&quot;Quality Gate&quot;){
+			try {
+			    sleep(10)
+			    timeout(time: 15, unit: &apos;MINUTES&apos;) { // Just in case something goes wrong, pipeline will be killed after a timeout
+			        def qg = waitForQualityGate() // Reuse taskId previously collected by withSonarQubeEnv
+			        if (qg.status != &apos;OK&apos;) {
+			            error &quot;Pipeline aborted due to quality gate failure: ${qg.status}&quot;
+			        }
+			    }
+			} catch (all) {
+			    email()
+			    error all.toString()
+			}
+		}
+*/
+		stage(&apos;Test, Compile and Build - Openshift, Nexus, Quay&apos;){
+			echo &quot;Test, Compile and Build - Openshift, Nexus, Quay&quot;
+			try {
+				def gitBuildContext =&quot;&quot;
+				if (params.containsKey(&apos;BUILDER_CONTEXT_PATH&apos;)) {
+					 gitBuildContext = &quot;${BUILDER_CONTEXT_PATH}&quot;
+				}
+
+				openshift.withCluster(&apos;npe-openshift&apos;) {
+					openshift.withProject(&quot;${env.BUILD_NAMESPACE}&quot;){
+						def secretline = &quot;${env.QUAY_SECRET}&quot;
+						println secretline
+						def secretlines = secretline.split(&quot;\n&quot;)
+						def secretName
+						for (String secretelineI : secretlines) {
+							println &quot;line ${secretelineI}&quot;
+							if (secretelineI.contains(&quot;name&quot;) ) {
+								secretName = secretelineI.split(&quot; &quot;)[3]
+								break
+							}
+						}
+						println &quot;secretName: ${secretName}&quot;
+						env.QUAT_SECRET_NAME = secretName
+						openshift.apply(&quot;${env.QUAY_SECRET}&quot;)
+						
+						def isExistBC = openshift.selector(&quot;bc&quot;,&quot;${env.APP_NAME}&quot;).exists()
+						
+						def newBuildResult = openshift.raw(&quot;new-build ${BUILDER_IMAGE}~${env.SOURCE_CODE_REPO}#${env.SOURCE_BRANCH} &quot;+
+											 &quot;--name ${env.APP_NAME} &quot; +
+											 &quot;--env=MAVEN_MIRROR_URL=${env.MAVEN_MIRROR_URL} &quot; +
+											 &quot;--env=NPM_MIRROR=${env.NPM_MIRROR} &quot; +
+											 &quot;--context-dir=${gitBuildContext} &quot; +
+											 &quot;--env=MAVEN_ARGS_APPEND=-Dmaven.wagon.http.ssl.insecure=true &quot; +
+											 &quot;--to=${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} &quot; +
+											 &quot;--to-docker=true &quot; +
+											 &quot;--push-secret=${secretName} &quot; +
+											 &quot;--source-secret=git-pull-secret &quot; + 
+											 &quot;--output=yaml &quot; +
+											 &quot;--dry-run=true &quot; )
+						bcSelector=openshift.apply(newBuildResult.actions[0].out,&quot;--force=true&quot;)
+						print  bcSelector
+						if ( isExistBC ) {
+						    bcSelector.startBuild()
+						}
+                        bcSelector = getOcLogStream(bcSelector)
+						def build_output = bcSelector.logs().out
+						def lines = build_output.split(&quot;\n&quot;)
+						def pushline = false
+						
+						for (String line: lines) { 
+							if ( line.contains(&quot;Successfully pushed&quot;) ){
+								pushline = line
+								break
+							}
+						}
+						
+                        if (pushline == false) {
+                            println lines.toString()
+                            error lines.toString()
+                        }
+						println pushline
+						pushline = pushline.split(&apos; &apos;)
+						pushline = pushline[pushline.length -1]
+						def manifest = pushline.split(&apos;@&apos;)[1]
+						def hostnameRepositoryname = pushline.split(&apos;@&apos;)[0]
+						def firstSlash = hostnameRepositoryname.indexOf(&apos;/&apos;)
+						def hostname = hostnameRepositoryname.substring(0,firstSlash)
+						def repositoryname = hostnameRepositoryname.substring(firstSlash+1,hostnameRepositoryname.length())
+						println &quot;manifest: ${manifest}       hostname: ${hostname}       repositoryname: ${repositoryname}&quot;
+						env.IMAGE_HOSTNAME = hostname
+						env.IMAGE_REPO = repositoryname
+						env.IMAGE_MANIFEST = manifest
+						openshift.set(&quot;triggers&quot;,&quot;bc/${env.APP_NAME}&quot;, &quot;--remove-all&quot;)
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+/*
+		stage(&quot;Wait for Clair Image Scanning&quot;){
+            try {
+                //print &quot; temp disable scan waiting... &quot;
+                timeout(time: 1, unit: &apos;MINUTES&apos;) { // Just in case something goes wrong, pipeline will be killed after a timeout
+                    waitForScanning(env.IMAGE_HOSTNAME, env.IMAGE_REPO, env.IMAGE_MANIFEST)
+                }
+            } catch (all) {
+                email()
+                // error all.toString()
+            }
+        }
+
+		stage(&apos;ACS Image Scanning&apos;) {
+			
+            stackrox (
+                apiToken: &apos;eyJhbGciOiJSUzI1NiIsImtpZCI6Imp3dGswIiwidHlwIjoiSldUIn0.eyJhdWQiOlsiaHR0cHM6Ly9zdGFja3JveC5pby9qd3Qtc291cmNlcyNhcGktdG9rZW5zIl0sImV4cCI6MTY4Mjg2NzA1MiwiaWF0IjoxNjUxMzMxMDUyLCJpc3MiOiJodHRwczovL3N0YWNrcm94LmlvL2p3dCIsImp0aSI6IjY3NWM1MDBlLTM1ZjEtNDBmZi04ZWQzLWJlOTZmMGQ1NDFiNCIsIm5hbWUiOiJkZXZvcHNqZW5raW5zIiwicm9sZXMiOlsiQ29udGludW91cyBJbnRlZ3JhdGlvbiJdfQ.AjHawtMhCrQ1S1IOXm5JhblNQ2f1FFViJKkvyfrgWqlrMuP-fXkQJyLD92Te4kYmzuuTb3rvti-Rmy7NP7MMa3YEHKA6qLmvj8CpZFi7DGjwK68FPmYjIHDXXYjKmNSiem94nwNUlbSRyim9bVEoB2CQTq7o_Q9BNwd1UJy3pzM4mgOVCCoOMg3I51sI7o9uZRkEjObDDPdfzbWhN9H8LCbLJAHg_CltWct6skI4L80qOixiikM6PbkEXH4bPoioOJPGN6Adf36Z3ef7mHwCEL_dRCb3yVyeyIltTcRorWG4-b4Y0pu6oZ20u6zjJIDtVG3pW8_wiIfzyk3WRMtywVm3muoRJlIueVuBDbbumAl1oakAjEBvlYFUJhULljr7Ab4Q-OQaOeP5D6F_fugVto6kxAFSXvqZ-P_SfuGg-NYd0cqdFiCN0igtuibiAzGJqtTh1phozxnyE_g2Ie6QoyQecDjoN7o7TbfdRT6WO_GQNzljSPFZZ42wsrUMShj1rLvGaLurAwwxOVWtEceKKYbsZloWT01MQJsX3LCc3IIIkv2h8eedw9zxsmCXSjg3RrSSOFOQ0blYs4HejsMqO8vKNZzcn764nehvszfChf6LGRQNRWsM9kdBid-PgkcnoLgl2hbhb8CDuQUhnYthkmJptq8oqL-3t-b6j5Q9RZw&apos;,
+                caCertPEM: &apos;&apos;,
+                enableTLSVerification: false,
+                failOnCriticalPluginError: true,
+                failOnPolicyEvalFailure: false,
+                portalAddress: &apos;https://central.stackrox:443&apos;,
+                imageNames: &quot;${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}&quot;
+            )
+		}
+*/
+
+		stage(&quot;Deploy to DEV&quot;){
+			try {
+				openshift.withCluster(&apos;npe-openshift&apos;) {
+					openshift.withProject(&quot;dev-${env.PROJECT_NAME}&quot;){
+						promoteEnvironment(&apos;dev&apos;)
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+		stage(&quot;Trigger SIT Deployment&quot;){
+			try {
+                build job: &apos;demo-pipeline-sit-cd&apos;, parameters: [
+                string(name: &apos;PROJECT_NAME&apos;, value: &quot;${env.PROJECT_NAME}&quot;),string(name: &apos;IMAGE_NAME&apos;, value: &quot;${env.IMAGE_NAME}&quot;),string(name: &apos;DATETAG&apos;, value: &quot;${env.DATETAG}&quot;),string(name: &apos;VERSION&apos;, value: &quot;${env.VERSION}&quot;),string(name: &apos;GIT_COMMITHASH&apos;, value: &quot;${env.GIT_COMMITHASH}&quot;)
+                ], wait: false
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+/*		
+		stage(&quot;Approve to promote to UAT&quot;){
+			try {
+				emailForUATApproval()
+				timeout(time: 30, unit: &apos;DAYS&apos;) { // Just in case something goes wrong, pipeline will be killed after a timeout
+					input message: &quot;OK to promote to UAT?&quot;, ok: &quot;Approve&quot;, submitter: &quot;submittername&quot;
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+		
+		stage(&quot;promote to UAT&quot;){
+			try {
+				openshift.withCluster(&apos;npe-openshift&apos;) {
+					openshift.withProject(&quot;uat-${env.PROJECT_NAME}&quot;){
+						promoteEnvironment(&apos;uat&apos;)
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+*/
+	}
+}
+
+def emailForSITApproval() {
+    emailext (
+       subject: &quot;Approve to promote to SIT &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;&quot;,
+       body: &quot;&quot;&quot;&lt;p&gt;Job &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;:&lt;/p&gt;
+        &lt;p&gt;Approve it on console  at &amp;QUOT;&lt;a href=&apos;${env.BUILD_URL}/input&apos;&gt;${env.JOB_NAME} [${env.BUILD_NUMBER}]&lt;/a&gt;&amp;QUOT;&lt;/p&gt;&quot;&quot;&quot;,
+       to: &quot;${env.EMAIL_SIT_APPROVAL}&quot;
+    )
+}
+
+def emailForUATApproval() {
+    emailext (
+       subject: &quot;Approve to promote to UAT &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;&quot;,
+       body: &quot;&quot;&quot;&lt;p&gt;Job &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;:&lt;/p&gt;
+        &lt;p&gt;Approve it on console  at &amp;QUOT;&lt;a href=&apos;${env.BUILD_URL}/input&apos;&gt;${env.JOB_NAME} [${env.BUILD_NUMBER}]&lt;/a&gt;&amp;QUOT;&lt;/p&gt;&quot;&quot;&quot;,
+       to: &quot;${env.EMAIL_UAT_APPROVAL}&quot;
+    )
+}
+
+def emailForProdApproval() {
+    emailext (
+       subject: &quot;Approve to promote to Prod &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;&quot;,
+       body: &quot;&quot;&quot;&lt;p&gt;Job &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;:&lt;/p&gt;
+        &lt;p&gt;Approve it on console  at &amp;QUOT;&lt;a href=&apos;${env.BUILD_URL}/input&apos;&gt;${env.JOB_NAME} [${env.BUILD_NUMBER}]&lt;/a&gt;&amp;QUOT;&lt;/p&gt;&quot;&quot;&quot;,
+       to: &quot;${env.EMAIL_PROD_APPROVAL}&quot;
+    )
+}
+
+def email() {
+   emailext (
+       subject: &quot;FAILED: Job &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;&quot;,
+       body: &quot;&quot;&quot;&lt;p&gt;STARTED: Job &apos;${env.JOB_NAME} [${env.BUILD_NUMBER}]&apos;:&lt;/p&gt;
+        &lt;p&gt;Check console output at &amp;QUOT;&lt;a href=&apos;${env.BUILD_URL}&apos;&gt;${env.JOB_NAME} [${env.BUILD_NUMBER}]&lt;/a&gt;&amp;QUOT;&lt;/p&gt;&quot;&quot;&quot;,
+       to: &quot;${env.EMAIL_FAIL}&quot;,
+       attachLog: true
+    )
+
+}
+
+def promoteEnvironment(environment){
+    openshift.apply(&quot;${env.QUAY_SECRET}&quot;, &quot;--force=true&quot;)
+    openshift.raw(&quot;secret link deployer ${env.QUAT_SECRET_NAME} --for=pull &quot;)
+    print &quot;after apply resources and secret...&quot;
+    
+    def isSelector = openshift.selector(&quot;is&quot;,&quot;${env.APP_NAME}&quot;)
+	// set and update the imagestream on application namespace
+	env.IMAGE_NAMESPACE=&quot;${env.PROJECT_NAME}&quot;
+	if ( &quot;dev,sit,uat&quot;.contains(environment) ) {
+	   env.IMAGE_NAMESPACE=&quot;${environment}-${env.PROJECT_NAME}&quot;
+       print &quot;imagestream ${env.IMAGE_NAMESPACE}...&quot;
+	}
+	
+	if ( !isSelector.exists() ) {
+        print &quot;imagestream not exists...&quot;
+	    openshift.raw(&quot;import-image ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} --from=${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} --reference-policy=local --insecure=true --confirm &quot; )
+	} else {
+        print &quot;imagestream exists...&quot;
+	    openshift.raw(&quot;tag --source=docker ${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} ${env.IMAGE_NAMESPACE}/${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}  --reference-policy=local --insecure=true &quot; )
+	}
+
+	echo &quot;Branch: ${env.DEPLOY_BRANCH}&quot;
+    git branch:&quot;${env.DEPLOY_BRANCH}&quot;, credentialsId: &quot;${env.DEPLOY_GIT_CREDS}&quot;, url: &quot;${env.DEPLOY_CODE_REPO}&quot;
+    sh &quot;git config --global user.email &apos;ci@ftlife.com.hk&apos;&quot;
+
+    dir(&quot;${environment}&quot;) {
+        sh &quot;&quot;&quot;
+        sed &apos;/kind: ImageStreamTag/q&apos; -i deployment-patch.yaml
+        echo &apos;          namespace: ${env.IMAGE_NAMESPACE}&apos; &gt;&gt;  deployment-patch.yaml
+        echo &apos;          name: ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}&apos; &gt;&gt;  deployment-patch.yaml
+        git commit -am &apos;Publish new version ${env.GIT_COMMITHASH}&apos;
+        &quot;&quot;&quot;
+
+		withCredentials([gitUsernamePassword(credentialsId: &quot;${env.DEPLOY_GIT_CREDS}&quot;, gitToolName: &apos;git-tool&apos;)]) {
+		    sh &quot;git push origin main || echo &apos;no changes&apos;&quot;
+		}
+    }
+	
+	// implmentation can replace ArgoCD / GitOps
+    openshift.raw(&quot;apply -k ./${environment} &quot;)
+	def dcSelector = openshift.selector(&quot;dc&quot;,&quot;${env.APP_NAME}&quot;)
+	if ( dcSelector.exists() ) {
+		sleep(30)
+		dcSelector.rollout().status()
+
+		def latestDeploymentVerison = openshift.selector(&quot;dc&quot;,&quot;${env.APP_NAME}&quot;).object().status.latestVersion
+		def rc = openshift.selector(&quot;rc&quot;,&quot;${env.APP_NAME}-${latestDeploymentVerison}&quot;)
+		timeout (time: 15, unit: &apos;MINUTES&apos;) {
+			rc.untilEach(1) {
+				def rcMap = it.object()
+				if (rcMap.status.replicas.equals(0)) {
+					return true
+				}
+				return (rcMap.status.replicas.equals(rcMap.status.readyReplicas))
+			}
+		}
+
+		openshift.raw(&quot;label dc ${env.APP_NAME} git-commit-hash=${env.GIT_COMMITHASH} --overwrite&quot;)
+	}
+	
+}
+
+def waitForScanning (hostname,repository,manifest) {
+    def vulnCount = [High: 0, Medium: 0, Low: 0, Fixable: 0]
+    
+    for (i=0; i&lt; 360; i++) {
+		withCredentials([string(credentialsId: &apos;quay-token-id&apos;, variable: &apos;TOKEN&apos;)]) {
+			def result = sh (
+			   script: &quot;curl -k -H &apos;Authorization: Bearer %TOKEN%&apos;  https://${hostname}/api/v1/repository/${repository}/manifest/${manifest}/security?vulnerabilities=true&quot;,
+			   returnStdout: true
+			)
+			def resultObject = readJSON text: result
+			println resultObject.status
+			
+			if ( resultObject.status == &quot;scanned&quot; ) {
+			   def items = resultObject.data.Layer.Features
+			   items.each { item -&gt;
+					if (item.Vulnerabilities) {
+						item.Vulnerabilities.each { vuln -&gt;
+							println &quot;Severity: ${vuln.Severity}&quot;
+							vulnCount[vuln.Severity] ++
+							println &quot;Vulnerabilities: ${item.Vulnerabilities}&quot;
+							if (vuln.FixedBy){
+								vulnCount.Fixable ++
+							}
+						}
+						
+					}
+			   }
+			   println &quot;vulnerability: ${vulnCount}&quot;
+			   if (vulnCount.High &gt; 0 ) {
+					error &quot;Images vulnerability has to be fixed : ${vulnCount}&quot;
+			   }
+			   break
+			}
+		}
+        sleep(10)
+    }
+}
+
+def getOcLogStream(bcSelector) {
+
+    // retry(10) {}
+    try {
+        bcSelector.logs(&quot;-f&quot;)
+    } catch (all) {
+        errorString = all.toString()
+        println errorString
+        if (errorString.contains(&quot;Unable to connect to the server&quot;)) {
+            error all.toString()
+        }
+        sleep(15)
+        return getOcLogStream(bcSelector)
+    }
+
+    return bcSelector
+}
+</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
