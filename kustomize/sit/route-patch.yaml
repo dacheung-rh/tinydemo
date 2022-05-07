@@ -1,0 +1,6 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: tinydemo
+spec:
+  host: tinydemo-sit-demo.apps.ocpuat.interconnect.systems

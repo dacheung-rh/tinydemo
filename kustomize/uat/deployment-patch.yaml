@@ -1,0 +1,22 @@
+kind: DeploymentConfig
+apiVersion: apps.openshift.io/v1
+metadata:
+  name: tinydemo
+spec:
+  template:
+    spec:
+      containers:
+      - name: tinydemo
+        env:
+        - name: ENVIRONMENT
+          value: uat
+  triggers:
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - tinydemo
+        from:
+          kind: ImageStreamTag
+          namespace: uat-demo
+          name: tinydemo:uat-20220502215827-1-c816d9ed
