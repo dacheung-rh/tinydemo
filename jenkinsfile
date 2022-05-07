@@ -1,0 +1,374 @@
+podTemplate(label: "maven", 
+            cloud: "openshift", 
+            inheritFrom: "maven", 
+            volumes: [configMapVolume(configMapName: 'jenkins-trusted-ca-bundle', mountPath: '/etc/ssl/certs/ca-bundle.crt', subPath: 'ca-bundle.crt')],
+            containers: [
+    containerTemplate(name: "jnlp", 
+                      image: "image-registry.openshift-image-registry.svc:5000/openshift/jenkins-agent-maven:latest",
+                      resourceRequestMemory: "512Mi",
+                      resourceLimitMemory: "512Mi",
+                      envVars: [
+      envVar(key: "CONTAINER_HEAP_PERCENT", value: "0.25")
+    ])
+  ]) {
+
+	node("maven") { 
+
+		env.MAVEN_MIRROR_URL="https://nexus-cicd.apps.ocpuat.interconnect.systems/repository/maven-public/"
+		env.NPM_MIRROR="https://nexus-cicd.apps.ocpuat.interconnect.systems/repository/nodejs/"
+		env.BUILD_NAMESPACE="dev-${env.PROJECT_NAME}"
+
+		stage('Source Code Download') {
+			try {
+				echo "Branch: ${env.SOURCE_BRANCH}"
+				git branch:"${env.SOURCE_BRANCH}", credentialsId: "${env.SOURCE_GIT_CREDS}", url: "${env.SOURCE_CODE_REPO}"
+				def commitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim().take(8)
+				echo "${commitHash}"
+				env.GIT_COMMITHASH = commitHash
+				def now = new Date()
+				env.DATETAG = now.format("yyyyMMddHHmmss", TimeZone.getTimeZone('Asia/Hong_Kong'))
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+/*
+		stage('Code Analysis - SonarQube'){
+			withSonarQubeEnv(){
+				configFileProvider([configFile(fileId:'maven-config-file',variable:'MAVENSETTINGS')]){
+				   sh "mvn -s $MAVENSETTINGS install sonar:sonar"
+				}
+			}
+		}
+		
+		stage("Quality Gate"){
+			try {
+			    sleep(10)
+			    timeout(time: 15, unit: 'MINUTES') { // Just in case something goes wrong, pipeline will be killed after a timeout
+			        def qg = waitForQualityGate() // Reuse taskId previously collected by withSonarQubeEnv
+			        if (qg.status != 'OK') {
+			            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+			        }
+			    }
+			} catch (all) {
+			    email()
+			    error all.toString()
+			}
+		}
+*/
+		stage('Test, Compile and Build - Openshift, Nexus, Quay'){
+			echo "Test, Compile and Build - Openshift, Nexus, Quay"
+			try {
+				def gitBuildContext =""
+				if (params.containsKey('BUILDER_CONTEXT_PATH')) {
+					 gitBuildContext = "${BUILDER_CONTEXT_PATH}"
+				}
+
+				openshift.withCluster('npe-openshift') {
+					openshift.withProject("${env.BUILD_NAMESPACE}"){
+						def secretline = "${env.QUAY_SECRET}"
+						println secretline
+						def secretlines = secretline.split("\n")
+						def secretName
+						for (String secretelineI : secretlines) {
+							println "line ${secretelineI}"
+							if (secretelineI.contains("name") ) {
+								secretName = secretelineI.split(" ")[3]
+								break
+							}
+						}
+						println "secretName: ${secretName}"
+						env.QUAT_SECRET_NAME = secretName
+						openshift.apply("${env.QUAY_SECRET}")
+						
+						def isExistBC = openshift.selector("bc","${env.APP_NAME}").exists()
+						
+						def newBuildResult = openshift.raw("new-build ${BUILDER_IMAGE}~${env.SOURCE_CODE_REPO}#${env.SOURCE_BRANCH} "+
+											 "--name ${env.APP_NAME} " +
+											 "--env=MAVEN_MIRROR_URL=${env.MAVEN_MIRROR_URL} " +
+											 "--env=NPM_MIRROR=${env.NPM_MIRROR} " +
+											 "--context-dir=${gitBuildContext} " +
+											 "--env=MAVEN_ARGS_APPEND=-Dmaven.wagon.http.ssl.insecure=true " +
+											 "--to=${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} " +
+											 "--to-docker=true " +
+											 "--push-secret=${secretName} " +
+											 "--source-secret=git-pull-secret " + 
+											 "--output=yaml " +
+											 "--dry-run=true " )
+						bcSelector=openshift.apply(newBuildResult.actions[0].out,"--force=true")
+						print  bcSelector
+						if ( isExistBC ) {
+						    bcSelector.startBuild()
+						}
+                        bcSelector = getOcLogStream(bcSelector)
+						def build_output = bcSelector.logs().out
+						def lines = build_output.split("\n")
+						def pushline = false
+						
+						for (String line: lines) { 
+							if ( line.contains("Successfully pushed") ){
+								pushline = line
+								break
+							}
+						}
+						
+                        if (pushline == false) {
+                            println lines.toString()
+                            error lines.toString()
+                        }
+						println pushline
+						pushline = pushline.split(' ')
+						pushline = pushline[pushline.length -1]
+						def manifest = pushline.split('@')[1]
+						def hostnameRepositoryname = pushline.split('@')[0]
+						def firstSlash = hostnameRepositoryname.indexOf('/')
+						def hostname = hostnameRepositoryname.substring(0,firstSlash)
+						def repositoryname = hostnameRepositoryname.substring(firstSlash+1,hostnameRepositoryname.length())
+						println "manifest: ${manifest}       hostname: ${hostname}       repositoryname: ${repositoryname}"
+						env.IMAGE_HOSTNAME = hostname
+						env.IMAGE_REPO = repositoryname
+						env.IMAGE_MANIFEST = manifest
+						openshift.set("triggers","bc/${env.APP_NAME}", "--remove-all")
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+/*
+		stage("Wait for Clair Image Scanning"){
+            try {
+                //print " temp disable scan waiting... "
+                timeout(time: 1, unit: 'MINUTES') { // Just in case something goes wrong, pipeline will be killed after a timeout
+                    waitForScanning(env.IMAGE_HOSTNAME, env.IMAGE_REPO, env.IMAGE_MANIFEST)
+                }
+            } catch (all) {
+                email()
+                // error all.toString()
+            }
+        }
+
+		stage('ACS Image Scanning') {
+			
+            stackrox (
+                apiToken: 'eyJhbGciOiJSUzI1NiIsImtpZCI6Imp3dGswIiwidHlwIjoiSldUIn0.eyJhdWQiOlsiaHR0cHM6Ly9zdGFja3JveC5pby9qd3Qtc291cmNlcyNhcGktdG9rZW5zIl0sImV4cCI6MTY4Mjg2NzA1MiwiaWF0IjoxNjUxMzMxMDUyLCJpc3MiOiJodHRwczovL3N0YWNrcm94LmlvL2p3dCIsImp0aSI6IjY3NWM1MDBlLTM1ZjEtNDBmZi04ZWQzLWJlOTZmMGQ1NDFiNCIsIm5hbWUiOiJkZXZvcHNqZW5raW5zIiwicm9sZXMiOlsiQ29udGludW91cyBJbnRlZ3JhdGlvbiJdfQ.AjHawtMhCrQ1S1IOXm5JhblNQ2f1FFViJKkvyfrgWqlrMuP-fXkQJyLD92Te4kYmzuuTb3rvti-Rmy7NP7MMa3YEHKA6qLmvj8CpZFi7DGjwK68FPmYjIHDXXYjKmNSiem94nwNUlbSRyim9bVEoB2CQTq7o_Q9BNwd1UJy3pzM4mgOVCCoOMg3I51sI7o9uZRkEjObDDPdfzbWhN9H8LCbLJAHg_CltWct6skI4L80qOixiikM6PbkEXH4bPoioOJPGN6Adf36Z3ef7mHwCEL_dRCb3yVyeyIltTcRorWG4-b4Y0pu6oZ20u6zjJIDtVG3pW8_wiIfzyk3WRMtywVm3muoRJlIueVuBDbbumAl1oakAjEBvlYFUJhULljr7Ab4Q-OQaOeP5D6F_fugVto6kxAFSXvqZ-P_SfuGg-NYd0cqdFiCN0igtuibiAzGJqtTh1phozxnyE_g2Ie6QoyQecDjoN7o7TbfdRT6WO_GQNzljSPFZZ42wsrUMShj1rLvGaLurAwwxOVWtEceKKYbsZloWT01MQJsX3LCc3IIIkv2h8eedw9zxsmCXSjg3RrSSOFOQ0blYs4HejsMqO8vKNZzcn764nehvszfChf6LGRQNRWsM9kdBid-PgkcnoLgl2hbhb8CDuQUhnYthkmJptq8oqL-3t-b6j5Q9RZw',
+                caCertPEM: '',
+                enableTLSVerification: false,
+                failOnCriticalPluginError: true,
+                failOnPolicyEvalFailure: false,
+                portalAddress: 'https://central.stackrox:443',
+                imageNames: "${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}"
+            )
+		}
+*/
+
+		stage("Deploy to DEV"){
+			try {
+				openshift.withCluster('npe-openshift') {
+					openshift.withProject("dev-${env.PROJECT_NAME}"){
+						promoteEnvironment('dev')
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+		stage("Trigger SIT Deployment"){
+			try {
+                build job: 'demo-pipeline-sit-cd', parameters: [
+                string(name: 'PROJECT_NAME', value: "${env.PROJECT_NAME}"),string(name: 'IMAGE_NAME', value: "${env.IMAGE_NAME}"),string(name: 'DATETAG', value: "${env.DATETAG}"),string(name: 'VERSION', value: "${env.VERSION}"),string(name: 'GIT_COMMITHASH', value: "${env.GIT_COMMITHASH}")
+                ], wait: false
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+
+/*		
+		stage("Approve to promote to UAT"){
+			try {
+				emailForUATApproval()
+				timeout(time: 30, unit: 'DAYS') { // Just in case something goes wrong, pipeline will be killed after a timeout
+					input message: "OK to promote to UAT?", ok: "Approve", submitter: "submittername"
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+		
+		stage("promote to UAT"){
+			try {
+				openshift.withCluster('npe-openshift') {
+					openshift.withProject("uat-${env.PROJECT_NAME}"){
+						promoteEnvironment('uat')
+					}
+				}
+			} catch (all) {
+				email()
+				error all.toString()
+			}
+		}
+*/
+	}
+}
+
+def emailForSITApproval() {
+    emailext (
+       subject: "Approve to promote to SIT '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+       body: """<p>Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+        <p>Approve it on console  at &QUOT;<a href='${env.BUILD_URL}/input'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+       to: "${env.EMAIL_SIT_APPROVAL}"
+    )
+}
+
+def emailForUATApproval() {
+    emailext (
+       subject: "Approve to promote to UAT '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+       body: """<p>Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+        <p>Approve it on console  at &QUOT;<a href='${env.BUILD_URL}/input'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+       to: "${env.EMAIL_UAT_APPROVAL}"
+    )
+}
+
+def emailForProdApproval() {
+    emailext (
+       subject: "Approve to promote to Prod '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+       body: """<p>Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+        <p>Approve it on console  at &QUOT;<a href='${env.BUILD_URL}/input'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+       to: "${env.EMAIL_PROD_APPROVAL}"
+    )
+}
+
+def email() {
+   emailext (
+       subject: "FAILED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'",
+       body: """<p>STARTED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+        <p>Check console output at &QUOT;<a href='${env.BUILD_URL}'>${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>&QUOT;</p>""",
+       to: "${env.EMAIL_FAIL}",
+       attachLog: true
+    )
+
+}
+
+def promoteEnvironment(environment){
+    openshift.apply("${env.QUAY_SECRET}", "--force=true")
+    openshift.raw("secret link deployer ${env.QUAT_SECRET_NAME} --for=pull ")
+    print "after apply resources and secret..."
+    
+    def isSelector = openshift.selector("is","${env.APP_NAME}")
+	// set and update the imagestream on application namespace
+	env.IMAGE_NAMESPACE="${env.PROJECT_NAME}"
+	if ( "dev,sit,uat".contains(environment) ) {
+	   env.IMAGE_NAMESPACE="${environment}-${env.PROJECT_NAME}"
+       print "imagestream ${env.IMAGE_NAMESPACE}..."
+	}
+	
+	if ( !isSelector.exists() ) {
+        print "imagestream not exists..."
+	    openshift.raw("import-image ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} --from=${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} --reference-policy=local --insecure=true --confirm " )
+	} else {
+        print "imagestream exists..."
+	    openshift.raw("tag --source=docker ${env.QUAY_REPO}/${env.IMAGE_NAME}:${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH} ${env.IMAGE_NAMESPACE}/${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}  --reference-policy=local --insecure=true " )
+	}
+
+	echo "Branch: ${env.DEPLOY_BRANCH}"
+    git branch:"${env.DEPLOY_BRANCH}", credentialsId: "${env.DEPLOY_GIT_CREDS}", url: "${env.DEPLOY_CODE_REPO}"
+    sh "git config --global user.email 'ci@ftlife.com.hk'"
+
+    dir("${environment}") {
+        sh """
+        sed '/kind: ImageStreamTag/q' -i deployment-patch.yaml
+        echo '          namespace: ${env.IMAGE_NAMESPACE}' >>  deployment-patch.yaml
+        echo '          name: ${env.APP_NAME}:${environment}-${env.DATETAG}-${env.VERSION}-${env.GIT_COMMITHASH}' >>  deployment-patch.yaml
+        git commit -am 'Publish new version ${env.GIT_COMMITHASH}'
+        """
+
+		withCredentials([gitUsernamePassword(credentialsId: "${env.DEPLOY_GIT_CREDS}", gitToolName: 'git-tool')]) {
+		    sh "git push origin main || echo 'no changes'"
+		}
+    }
+	
+	// implmentation can replace ArgoCD / GitOps
+    openshift.raw("apply -k ./${environment} ")
+	def dcSelector = openshift.selector("dc","${env.APP_NAME}")
+	if ( dcSelector.exists() ) {
+		sleep(30)
+		dcSelector.rollout().status()
+
+		def latestDeploymentVerison = openshift.selector("dc","${env.APP_NAME}").object().status.latestVersion
+		def rc = openshift.selector("rc","${env.APP_NAME}-${latestDeploymentVerison}")
+		timeout (time: 15, unit: 'MINUTES') {
+			rc.untilEach(1) {
+				def rcMap = it.object()
+				if (rcMap.status.replicas.equals(0)) {
+					return true
+				}
+				return (rcMap.status.replicas.equals(rcMap.status.readyReplicas))
+			}
+		}
+
+		openshift.raw("label dc ${env.APP_NAME} git-commit-hash=${env.GIT_COMMITHASH} --overwrite")
+	}
+	
+}
+
+def waitForScanning (hostname,repository,manifest) {
+    def vulnCount = [High: 0, Medium: 0, Low: 0, Fixable: 0]
+    
+    for (i=0; i< 360; i++) {
+		withCredentials([string(credentialsId: 'quay-token-id', variable: 'TOKEN')]) {
+			def result = sh (
+			   script: "curl -k -H 'Authorization: Bearer %TOKEN%'  https://${hostname}/api/v1/repository/${repository}/manifest/${manifest}/security?vulnerabilities=true",
+			   returnStdout: true
+			)
+			def resultObject = readJSON text: result
+			println resultObject.status
+			
+			if ( resultObject.status == "scanned" ) {
+			   def items = resultObject.data.Layer.Features
+			   items.each { item ->
+					if (item.Vulnerabilities) {
+						item.Vulnerabilities.each { vuln ->
+							println "Severity: ${vuln.Severity}"
+							vulnCount[vuln.Severity] ++
+							println "Vulnerabilities: ${item.Vulnerabilities}"
+							if (vuln.FixedBy){
+								vulnCount.Fixable ++
+							}
+						}
+						
+					}
+			   }
+			   println "vulnerability: ${vulnCount}"
+			   if (vulnCount.High > 0 ) {
+					error "Images vulnerability has to be fixed : ${vulnCount}"
+			   }
+			   break
+			}
+		}
+        sleep(10)
+    }
+}
+
+def getOcLogStream(bcSelector) {
+
+    // retry(10) {}
+    try {
+        bcSelector.logs("-f")
+    } catch (all) {
+        errorString = all.toString()
+        println errorString
+        if (errorString.contains("Unable to connect to the server")) {
+            error all.toString()
+        }
+        sleep(15)
+        return getOcLogStream(bcSelector)
+    }
+
+    return bcSelector
+}
